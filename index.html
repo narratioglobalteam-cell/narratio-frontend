@@ -1,0 +1,28 @@
+﻿
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Narratio Test</title>
+</head>
+<body>
+  <h1>Narratio</h1>
+  <p id="status">Проверка...</p>
+
+  <script>
+    // Адрес твоего backend на Render
+    const API_BASE = 'https://narratio-backend-5asu.onrender.com';
+
+    fetch(`${API_BASE}/api/health`)
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('status').textContent =
+          'Бэкенд ответил: ' + JSON.stringify(data);
+      })
+      .catch(err => {
+        document.getElementById('status').textContent =
+          'Ошибка: ' + err;
+      });
+  </script>
+</body>
+</html>
