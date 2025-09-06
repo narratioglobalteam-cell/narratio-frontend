@@ -4,6 +4,14 @@
   <meta charset="utf-8" />
   <title>Narratio</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body{font:16px/1.5 system-ui,Segoe UI,Roboto,Arial;max-width:860px;margin:32px auto;padding:0 12px}
+    h1{margin:0 0 8px}
+    h3{margin:20px 0 8px}
+    .muted{color:#666}
+    button{padding:8px 12px;border:1px solid #ccc;border-radius:8px;background:#f7f7f7;cursor:pointer}
+    button:active{transform:translateY(1px)}
+  </style>
 </head>
 <body>
   <h1>Narratio</h1>
@@ -11,51 +19,82 @@
   <p><a href="privacy.html" rel="noopener">Политика конфиденциальности</a></p>
 
   <h3>Проверка /api/health</h3>
-  <p id="health">Проверка...</p>
+  <p id="health" class="muted">Ожидание запуска бэкенда…</p>
 
   <h3>Проверка /api/test</h3>
-  <p id="test">Проверка...</p>
+  <p id="test" class="muted">Ожидание проверки…</p>
+
+  <p><button id="retryBtn">Повторить проверку</button></p>
 
   <script>
     const API_BASE = 'https://narratio-backend-5asu.onrender.com';
 
-    function fetchWithTimeout(url, opts = {}) {
-      const { timeout = 15000 } = opts;
-      return new Promise((resolve, reject) => {
-        const ctrl = new AbortController();
-        const t = setTimeout(() => {
-          ctrl.abort();
-          reject(new Error('timeout ' + timeout + 'ms'));
-        }, timeout);
-        fetch(url, { signal: ctrl.signal })
-          .then(r => { clearTimeout(t); resolve(r); })
-          .catch(err => { clearTimeout(t); reject(err); });
-      });
+    function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+    function fetchWithTimeout(url, timeout=15000){
+      const ctrl = new AbortController();
+      const t = setTimeout(()=>ctrl.abort(), timeout);
+      return fetch(url, {signal: ctrl.signal})
+        .finally(()=>clearTimeout(t));
     }
 
-    async function load(endpoint, targetId) {
-      const el = document.getElementById(targetId);
-      try {
-        // 1 попытка + 1 ретрай при ошибке
-        let res = await fetchWithTimeout(`${API_BASE}${endpoint}`, { timeout: 15000 });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        let data = await res.json();
-        el.textContent = 'Бэкенд ответил: ' + JSON.stringify(data);
-      } catch (e1) {
-        try {
-          let res2 = await fetchWithTimeout(`${API_BASE}${endpoint}`, { timeout: 15000 });
-          if (!res2.ok) throw new Error('HTTP ' + res2.status);
-          let data2 = await res2.json();
-          el.textContent = 'Бэкенд ответил: ' + JSON.stringify(data2);
-        } catch (e2) {
-          el.textContent = 'Ошибка: ' + (e2.message || String(e2));
+    async function fetchJSON(url, timeout=15000){
+      const r = await fetchWithTimeout(url, timeout);
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }
+
+    async function withRetry(taskFn, {tries=8, firstDelay=2000, factor=1.6, statusEl, label}){
+      let delay = firstDelay, lastErr;
+      for(let i=1;i<=tries;i++){
+        try{
+          if(statusEl) statusEl.textContent = `${label} (попытка ${i}/${tries})…`;
+          const res = await taskFn();
+          return res;
+        }catch(e){
+          lastErr = e;
+          if(i < tries){
+            if(statusEl) statusEl.textContent = `${label} — ожидание ${Math.ceil(delay/1000)}с…`;
+            await sleep(delay);
+            delay = Math.min(15000, Math.round(delay*factor));
+          }
         }
+      }
+      throw lastErr || new Error('неизвестная ошибка');
+    }
+
+    async function runChecks(){
+      const elHealth = document.getElementById('health');
+      const elTest = document.getElementById('test');
+      elHealth.classList.add('muted'); elTest.classList.add('muted');
+      elHealth.textContent = 'Ожидание запуска бэкенда…';
+      elTest.textContent = 'Ожидание проверки…';
+
+      try{
+        const health = await withRetry(
+          () => fetchJSON(`${API_BASE}/api/health`, 10000),
+          { tries: 8, firstDelay: 2000, factor: 1.7, statusEl: elHealth, label: 'Пробуждение бэкенда' }
+        );
+        elHealth.classList.remove('muted');
+        elHealth.textContent = 'Бэкенд ответил: ' + JSON.stringify(health);
+
+        const test = await withRetry(
+          () => fetchJSON(`${API_BASE}/api/test`, 10000),
+          { tries: 5, firstDelay: 1500, factor: 1.6, statusEl: elTest, label: 'Проверка /api/test' }
+        );
+        elTest.classList.remove('muted');
+        elTest.textContent = 'Бэкенд ответил: ' + JSON.stringify(test);
+      }catch(e){
+        const msg = (e && e.message) ? e.message : String(e);
+        if(elTest.textContent.startsWith('Ожидание')) {
+          elTest.textContent = 'Ошибка: ' + msg;
+        }
+        elHealth.textContent = 'Ошибка: ' + msg;
       }
     }
 
-    load('/api/health', 'health');
-    load('/api/test', 'test');
+    document.getElementById('retryBtn').addEventListener('click', runChecks);
+    runChecks();
   </script>
 </body>
 </html>
-
