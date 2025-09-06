@@ -8,6 +8,8 @@
 <body>
   <h1>Narratio</h1>
 
+  <p><a href="privacy.html" rel="noopener">Политика конфиденциальности</a></p>
+
   <h3>Проверка /api/health</h3>
   <p id="health">Проверка...</p>
 
@@ -17,34 +19,43 @@
   <script>
     const API_BASE = 'https://narratio-backend-5asu.onrender.com';
 
-    async function loadHealth() {
+    function fetchWithTimeout(url, opts = {}) {
+      const { timeout = 15000 } = opts;
+      return new Promise((resolve, reject) => {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => {
+          ctrl.abort();
+          reject(new Error('timeout ' + timeout + 'ms'));
+        }, timeout);
+        fetch(url, { signal: ctrl.signal })
+          .then(r => { clearTimeout(t); resolve(r); })
+          .catch(err => { clearTimeout(t); reject(err); });
+      });
+    }
+
+    async function load(endpoint, targetId) {
+      const el = document.getElementById(targetId);
       try {
-        const r = await fetch(`${API_BASE}/api/health`);
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        const data = await r.json();
-        document.getElementById('health').textContent =
-          'Бэкенд ответил: ' + JSON.stringify(data);
-      } catch (e) {
-        document.getElementById('health').textContent =
-          'Ошибка: ' + (e.message || String(e));
+        // 1 попытка + 1 ретрай при ошибке
+        let res = await fetchWithTimeout(`${API_BASE}${endpoint}`, { timeout: 15000 });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        let data = await res.json();
+        el.textContent = 'Бэкенд ответил: ' + JSON.stringify(data);
+      } catch (e1) {
+        try {
+          let res2 = await fetchWithTimeout(`${API_BASE}${endpoint}`, { timeout: 15000 });
+          if (!res2.ok) throw new Error('HTTP ' + res2.status);
+          let data2 = await res2.json();
+          el.textContent = 'Бэкенд ответил: ' + JSON.stringify(data2);
+        } catch (e2) {
+          el.textContent = 'Ошибка: ' + (e2.message || String(e2));
+        }
       }
     }
 
-    async function loadTest() {
-      try {
-        const r = await fetch(`${API_BASE}/api/test`);
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        const data = await r.json();
-        document.getElementById('test').textContent =
-          'Бэкенд ответил: ' + JSON.stringify(data);
-      } catch (e) {
-        document.getElementById('test').textContent =
-          'Ошибка: ' + (e.message || String(e));
-      }
-    }
-
-    loadHealth();
-    loadTest();
+    load('/api/health', 'health');
+    load('/api/test', 'test');
   </script>
 </body>
 </html>
+
