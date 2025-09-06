@@ -1,28 +1,30 @@
-﻿
-<!doctype html>
+﻿<!doctype html>
 <html lang="ru">
 <head>
   <meta charset="utf-8">
   <title>Narratio Test</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 </head>
 <body>
   <h1>Narratio</h1>
   <p id="status">Проверка...</p>
 
   <script>
-    // Адрес твоего backend на Render
     const API_BASE = 'https://narratio-backend-5asu.onrender.com';
 
-    fetch(`${API_BASE}/api/health`)
-      .then(r => r.json())
-      .then(data => {
+    async function run() {
+      try {
+        const res = await fetch(`${API_BASE}/api/test`);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
         document.getElementById('status').textContent =
           'Бэкенд ответил: ' + JSON.stringify(data);
-      })
-      .catch(err => {
+      } catch (err) {
         document.getElementById('status').textContent =
-          'Ошибка: ' + err;
-      });
+          'Ошибка: ' + (err.message || String(err));
+      }
+    }
+    run();
   </script>
 </body>
 </html>
