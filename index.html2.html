@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Narratio — проверка бэкенда</title>
+  <style>
+    :root { --bg:#0b1020; --panel:#111a33; --text:#eaf0ff; --muted:#a9b3d6; --ok:#22c55e; --bad:#ef4444; --btn:#1f2a4d; --btnh:#24345f; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    .wrap { max-width:920px; margin:32px auto; padding:0 16px; }
+    h1 { margin:0 0 8px; font-size:22px; }
+    .sub { color:var(--muted); margin:0 0 24px; }
+    .grid { display:grid; grid-template-columns:1fr; gap:16px; }
+    @media (min-width:720px){ .grid{ grid-template-columns:1fr 1fr; } }
+    .card { background:var(--panel); border:1px solid #223056; border-radius:14px; padding:16px; box-shadow:0 6px 18px rgba(0,0,0,.25); }
+    .card h2 { margin:0 0 8px; font-size:16px; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    button { appearance:none; border:1px solid #2b3a69; background:var(--btn); color:var(--text); padding:8px 12px; border-radius:10px; cursor:pointer; }
+    button:hover { background:var(--btnh); }
+    code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+    .log { margin-top:10px; background:#0c142a; border:1px dashed #2b3a69; border-radius:10px; padding:10px; height:120px; overflow:auto; white-space:pre-wrap; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-weight:600; font-size:12px; }
+    .ok { background:rgba(34,197,94,.15); color:var(--ok); border:1px solid rgba(34,197,94,.35); }
+    .bad { background:rgba(239,68,68,.15); color:var(--bad); border:1px solid rgba(239,68,68,.35); }
+    footer { margin:28px 0 12px; color:var(--muted); font-size:13px; }
+    a { color:#8ab4ff; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Narratio</h1>
+    <p class="sub">Проверка соединения фронта с бэкендом</p>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <div>Бэкенд: <span id="be-url" class="mono"></span></div>
+        <div id="be-status" class="pill bad">не проверен</div>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <button id="btn-health">Проверить /health</button>
+        <button id="btn-test">Проверить /test</button>
+        <button id="btn-retry">Повторить проверку</button>
+        <button id="btn-wake">Разбудить бэкенд</button>
+      </div>
+      <div id="log" class="log"></div>
+    </div>
+
+    <div class="grid" style="margin-top:16px;">
+      <div class="card">
+        <h2>Политика конфиденциальности</h2>
+        <p><a href="./privacy.html">Открыть privacy.html</a></p>
+      </div>
+      <div class="card">
+        <h2>Справка</h2>
+        <ul>
+          <li>Если Render был «усыплён», нажмите <b>Разбудить бэкенд</b> и подождите 20–40 секунд.</li>
+          <li>Если в консоли ошибка <span class=\"mono\">CORS</span>, добавьте в бэкенд заголовки:
+            <span class=\"mono\">Access-Control-Allow-Origin: *</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <footer>
+      &copy; Narratio Global Team • <span class=\"mono\">GitHub Pages + Render</span>
+    </footer>
+  </div>
+
+  <script>
+    // === НАСТРОЙКА: URL бэкенда ===
+    const BACKEND = 'https://narratio-backend-5asu.onrender.com';
+
+    // ——— не трогать ниже ———
+    const el = (id)=>document.getElementById(id);
+    const log = (m)=>{ el('log').textContent += `${new Date().toLocaleTimeString()}  ${m}\n`; el('log').scrollTop = el('log').scrollHeight; };
+    const setStatus = (ok)=>{ const s=el('be-status'); s.textContent = ok ? 'OK' : 'ошибка'; s.className = 'pill ' + (ok ? 'ok':'bad'); };
+    el('be-url').textContent = BACKEND;
+
+    async function fetchJSON(url, opts={}) {
+      const res = await fetch(url, { ...opts, headers: { 'Accept':'application/json', ...(opts.headers||{}) }, mode:'cors' });
+      const text = await res.text();
+      let body;
+      try { body = JSON.parse(text); } catch { body = text; }
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} — ${typeof body==='string'?body:JSON.stringify(body)}`);
+      return body;
+    }
+
+    async function checkHealth() {
+      const url = `${BACKEND}/health`;
+      log(`→ GET ${url}`);
+      try {
+        const data = await fetchJSON(url);
+        log(`✓ /health: ${typeof data==='string'?data:JSON.stringify(data)}`);
+        setStatus(true);
+      } catch (e) {
+        log(`✗ /health ошибка: ${e.message}`);
+        setStatus(false);
+      }
+    }
+
+    async function checkTest() {
+      const url = `${BACKEND}/test`;
+      log(`→ GET ${url}`);
+      try {
+        const data = await fetchJSON(url);
+        log(`✓ /test: ${typeof data==='string'?data:JSON.stringify(data)}`);
+        setStatus(true);
+      } catch (e) {
+        log(`✗ /test ошибка: ${e.message}`);
+        setStatus(false);
+      }
+    }
+
+    // «Разбудить» Render free instance + повторить проверки
+    async function wakeAndRetry() {
+      const ping = `${BACKEND}/health`;
+      log(`↻ Разбудить бэкенд: ${ping}`);
+      try { await fetch(ping, { mode:'cors' }); } catch {}
+      // подождём чтобы Render прогрелся
+      const delays = [1500, 3000, 5000, 8000, 12000];
+      for (const ms of delays) {
+        log(`… жду ${ms} ms`);
+        await new Promise(r=>setTimeout(r, ms));
+        try {
+          await checkHealth();
+          await checkTest();
+          log('✓ Бэкенд ожил');
+          return;
+        } catch {}
+      }
+      log('✗ Не удалось «разбудить» — попробуйте ещё раз или проверьте Render.');
+    }
+
+    el('btn-health').onclick = checkHealth;
+    el('btn-test').onclick = checkTest;
+    el('btn-retry').onclick = async ()=>{ await checkHealth(); await checkTest(); };
+    el('btn-wake').onclick = wakeAndRetry;
+
+    // Авто-попытка при открытии страницы
+    wakeAndRetry();
+  </script>
+</body>
+</html>
