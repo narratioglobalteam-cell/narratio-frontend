@@ -1,100 +1,143 @@
-﻿<!doctype html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
-  <title>Narratio</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Narratio — проверка бэкенда</title>
   <style>
-    body{font:16px/1.5 system-ui,Segoe UI,Roboto,Arial;max-width:860px;margin:32px auto;padding:0 12px}
-    h1{margin:0 0 8px}
-    h3{margin:20px 0 8px}
-    .muted{color:#666}
-    button{padding:8px 12px;border:1px solid #ccc;border-radius:8px;background:#f7f7f7;cursor:pointer}
-    button:active{transform:translateY(1px)}
+    :root { --bg:#0b1020; --panel:#111a33; --text:#eaf0ff; --muted:#a9b3d6; --ok:#22c55e; --bad:#ef4444; --btn:#1f2a4d; --btnh:#24345f; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    .wrap { max-width:920px; margin:32px auto; padding:0 16px; }
+    h1 { margin:0 0 8px; font-size:22px; }
+    .sub { color:var(--muted); margin:0 0 24px; }
+    .grid { display:grid; grid-template-columns:1fr; gap:16px; }
+    @media (min-width:720px){ .grid{ grid-template-columns:1fr 1fr; } }
+    .card { background:var(--panel); border:1px solid #223056; border-radius:14px; padding:16px; box-shadow:0 6px 18px rgba(0,0,0,.25); }
+    .card h2 { margin:0 0 8px; font-size:16px; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    button { appearance:none; border:1px solid #2b3a69; background:var(--btn); color:var(--text); padding:8px 12px; border-radius:10px; cursor:pointer; }
+    button:hover { background:var(--btnh); }
+    code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+    .log { margin-top:10px; background:#0c142a; border:1px dashed #2b3a69; border-radius:10px; padding:10px; height:120px; overflow:auto; white-space:pre-wrap; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-weight:600; font-size:12px; }
+    .ok { background:rgba(34,197,94,.15); color:var(--ok); border:1px solid rgba(34,197,94,.35); }
+    .bad { background:rgba(239,68,68,.15); color:var(--bad); border:1px solid rgba(239,68,68,.35); }
+    footer { margin:28px 0 12px; color:var(--muted); font-size:13px; }
+    a { color:#8ab4ff; }
   </style>
 </head>
 <body>
-  <h1>Narratio</h1>
+  <div class="wrap">
+    <h1>Narratio</h1>
+    <p class="sub">Проверка соединения фронта с бэкендом</p>
 
-  <p><a href="privacy.html" rel="noopener">Политика конфиденциальности</a></p>
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <div>Бэкенд: <span id="be-url" class="mono"></span></div>
+        <div id="be-status" class="pill bad">не проверен</div>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <button id="btn-health">Проверить /api/health</button>
+        <button id="btn-test">Проверить /api/test</button>
+        <button id="btn-retry">Повторить проверку</button>
+        <button id="btn-wake">Разбудить бэкенд</button>
+      </div>
+      <div id="log" class="log"></div>
+    </div>
 
-  <h3>Проверка /api/health</h3>
-  <p id="health" class="muted">Ожидание запуска бэкенда…</p>
+    <div class="grid" style="margin-top:16px;">
+      <div class="card">
+        <h2>Политика конфиденциальности</h2>
+        <p><a href="./privacy.html">Открыть privacy.html</a></p>
+      </div>
+      <div class="card">
+        <h2>Справка</h2>
+        <ul>
+          <li>Если Render был «усыплён», нажмите <b>Разбудить бэкенд</b> и подождите 20–40 секунд.</li>
+          <li>Если в консоли ошибка <span class="mono">CORS</span>, добавьте в бэкенд заголовки:
+            <span class="mono">Access-Control-Allow-Origin: *</span></li>
+        </ul>
+      </div>
+    </div>
 
-  <h3>Проверка /api/test</h3>
-  <p id="test" class="muted">Ожидание проверки…</p>
-
-  <p><button id="retryBtn">Повторить проверку</button></p>
+    <footer>
+      &copy; Narratio Global Team • <span class="mono">GitHub Pages + Render</span>
+    </footer>
+  </div>
 
   <script>
-    const API_BASE = 'https://narratio-backend-5asu.onrender.com';
+    // === НАСТРОЙКА: URL бэкенда ===
+    const BACKEND = 'https://narratio-backend-5asu.onrender.com';
 
-    function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+    // ——— не трогать ниже ———
+    const el = (id)=>document.getElementById(id);
+    const log = (m)=>{ el('log').textContent += `${new Date().toLocaleTimeString()}  ${m}\n`; el('log').scrollTop = el('log').scrollHeight; };
+    const setStatus = (ok)=>{ const s=el('be-status'); s.textContent = ok ? 'OK' : 'ошибка'; s.className = 'pill ' + (ok ? 'ok':'bad'); };
+    el('be-url').textContent = BACKEND;
 
-    function fetchWithTimeout(url, timeout=15000){
-      const ctrl = new AbortController();
-      const t = setTimeout(()=>ctrl.abort(), timeout);
-      return fetch(url, {signal: ctrl.signal})
-        .finally(()=>clearTimeout(t));
+    async function fetchJSON(url, opts={}) {
+      const res = await fetch(url, { ...opts, headers: { 'Accept':'application/json', ...(opts.headers||{}) }, mode:'cors' });
+      const text = await res.text();
+      let body;
+      try { body = JSON.parse(text); } catch { body = text; }
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} — ${typeof body==='string'?body:JSON.stringify(body)}`);
+      return body;
     }
 
-    async function fetchJSON(url, timeout=15000){
-      const r = await fetchWithTimeout(url, timeout);
-      if(!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    }
-
-    async function withRetry(taskFn, {tries=8, firstDelay=2000, factor=1.6, statusEl, label}){
-      let delay = firstDelay, lastErr;
-      for(let i=1;i<=tries;i++){
-        try{
-          if(statusEl) statusEl.textContent = `${label} (попытка ${i}/${tries})…`;
-          const res = await taskFn();
-          return res;
-        }catch(e){
-          lastErr = e;
-          if(i < tries){
-            if(statusEl) statusEl.textContent = `${label} — ожидание ${Math.ceil(delay/1000)}с…`;
-            await sleep(delay);
-            delay = Math.min(15000, Math.round(delay*factor));
-          }
-        }
-      }
-      throw lastErr || new Error('неизвестная ошибка');
-    }
-
-    async function runChecks(){
-      const elHealth = document.getElementById('health');
-      const elTest = document.getElementById('test');
-      elHealth.classList.add('muted'); elTest.classList.add('muted');
-      elHealth.textContent = 'Ожидание запуска бэкенда…';
-      elTest.textContent = 'Ожидание проверки…';
-
-      try{
-        const health = await withRetry(
-          () => fetchJSON(`${API_BASE}/api/health`, 10000),
-          { tries: 8, firstDelay: 2000, factor: 1.7, statusEl: elHealth, label: 'Пробуждение бэкенда' }
-        );
-        elHealth.classList.remove('muted');
-        elHealth.textContent = 'Бэкенд ответил: ' + JSON.stringify(health);
-
-        const test = await withRetry(
-          () => fetchJSON(`${API_BASE}/api/test`, 10000),
-          { tries: 5, firstDelay: 1500, factor: 1.6, statusEl: elTest, label: 'Проверка /api/test' }
-        );
-        elTest.classList.remove('muted');
-        elTest.textContent = 'Бэкенд ответил: ' + JSON.stringify(test);
-      }catch(e){
-        const msg = (e && e.message) ? e.message : String(e);
-        if(elTest.textContent.startsWith('Ожидание')) {
-          elTest.textContent = 'Ошибка: ' + msg;
-        }
-        elHealth.textContent = 'Ошибка: ' + msg;
+    async function checkHealth() {
+      const url = `${BACKEND}/api/health`;
+      log(`→ GET ${url}`);
+      try {
+        const data = await fetchJSON(url);
+        log(`✓ /api/health: ${typeof data==='string'?data:JSON.stringify(data)}`);
+        setStatus(true);
+      } catch (e) {
+        log(`✗ /api/health ошибка: ${e.message}`);
+        setStatus(false);
       }
     }
 
-    document.getElementById('retryBtn').addEventListener('click', runChecks);
-    runChecks();
+    async function checkTest() {
+      const url = `${BACKEND}/api/test`;
+      log(`→ GET ${url}`);
+      try {
+        const data = await fetchJSON(url);
+        log(`✓ /api/test: ${typeof data==='string'?data:JSON.stringify(data)}`);
+        setStatus(true);
+      } catch (e) {
+        log(`✗ /api/test ошибка: ${e.message}`);
+        setStatus(false);
+      }
+    }
+
+    // «Разбудить» Render free instance + повторить проверки
+    async function wakeAndRetry() {
+      const ping = `${BACKEND}/api/health`;
+      log(`↻ Разбудить бэкенд: ${ping}`);
+      try { await fetch(ping, { mode:'cors' }); } catch {}
+      // подождём чтобы Render прогрелся
+      const delays = [1500, 3000, 5000, 8000, 12000];
+      for (const ms of delays) {
+        log(`… жду ${ms} ms`);
+        await new Promise(r=>setTimeout(r, ms));
+        try {
+          await checkHealth();
+          await checkTest();
+          log('✓ Бэкенд ожил');
+          return;
+        } catch {}
+      }
+      log('✗ Не удалось «разбудить» — попробуйте ещё раз или проверьте Render.');
+    }
+
+    el('btn-health').onclick = checkHealth;
+    el('btn-test').onclick = checkTest;
+    el('btn-retry').onclick = async ()=>{ await checkHealth(); await checkTest(); };
+    el('btn-wake').onclick = wakeAndRetry;
+
+    // Авто-попытка при открытии страницы
+    wakeAndRetry();
   </script>
 </body>
 </html>
